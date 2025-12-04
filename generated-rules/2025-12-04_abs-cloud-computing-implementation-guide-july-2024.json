@@ -1,0 +1,570 @@
+{
+  "category": "Custom Policy",
+  "subcategory": "Generated from ABS Cloud Computing Implementation Guide 3.0",
+  "version": "1.0.0",
+  "generated_at": "2025-12-04T02:20:06.394Z",
+  "source_document": "abs-cloud-computing-implementation-guide---july-2024.md",
+  "source_repo": "sectuary/CompliancePolicy",
+  "standards": [
+    {
+      "id": "CUSTOM-POLICY-001",
+      "title": "Storage Account Public Network Access Not Disabled",
+      "description": "Storage accounts allow public network access which violates data confidentiality requirements. Public access should be disabled to prevent unauthorized data exfiltration.",
+      "severity": "CRITICAL",
+      "rationale": "Section 3.11 Data Loss Prevention requires FIs to prevent unauthorized dissemination of data. Public network access creates unnecessary exposure to internet-based attacks.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.publicNetworkAccess",
+            "notEquals": "Disabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Review storage account access requirements",
+          "Disable public network access if not required",
+          "Configure private endpoints for secure access",
+          "Update application connection strings to use private endpoints"
+        ],
+        "example_fix": "az storage account update --name <storage-account-name> --resource-group <resource-group> --public-network-access Disabled"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-002",
+      "title": "Storage Account Encryption at Rest Not Enabled with Customer-Managed Keys",
+      "description": "Storage accounts are not using customer-managed keys for encryption at rest, limiting cryptographic control as required by Section 3.5.",
+      "severity": "HIGH",
+      "rationale": "Section 3.5 Cryptographic Key Management requires FIs to generate their own unique cryptographic keys and maintain control over key material.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.encryption.keySource",
+            "notEquals": "Microsoft.Keyvault"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create or identify Azure Key Vault with HSM backing",
+          "Generate customer-managed key in Key Vault",
+          "Grant storage account access to Key Vault",
+          "Configure storage account to use customer-managed key"
+        ],
+        "example_fix": "az storage account update --name <storage-account-name> --resource-group <resource-group> --encryption-key-source Microsoft.Keyvault --encryption-key-vault <key-vault-uri> --encryption-key-name <key-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-003",
+      "title": "Network Security Group Allows Unrestricted Inbound Internet Access",
+      "description": "NSG rules allow inbound traffic from the internet on high-risk ports without restrictions, violating Section 3.4 Network Architecture requirements.",
+      "severity": "CRITICAL",
+      "rationale": "Section 3.4 requires FIs to secure cloud workloads against network-based attacks and implement controls to filter access to cloud environments.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Network/networkSecurityGroups/securityRules",
+        "conditions": [
+          {
+            "field": "properties.direction",
+            "equals": "Inbound"
+          },
+          {
+            "field": "properties.access",
+            "equals": "Allow"
+          },
+          {
+            "field": "properties.sourceAddressPrefix",
+            "in": [
+              "*",
+              "Internet",
+              "0.0.0.0/0"
+            ]
+          },
+          {
+            "field": "properties.destinationPortRange",
+            "in": [
+              "22",
+              "3389",
+              "1433",
+              "3306",
+              "5432",
+              "27017"
+            ]
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Review NSG rules allowing inbound internet access",
+          "Restrict source IP ranges to known authorized IPs",
+          "Implement Azure Bastion or VPN for administrative access",
+          "Remove or modify overly permissive rules"
+        ],
+        "example_fix": "az network nsg rule update --resource-group <resource-group> --nsg-name <nsg-name> --name <rule-name> --source-address-prefixes <specific-ip-range>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-004",
+      "title": "Key Vault Not Using HSM-Backed Keys",
+      "description": "Key Vault is not configured to use HSM-backed keys (Premium SKU with HSM protection), failing to meet Section 3.5 requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.5 requires cryptographic keys to be secured in FIPS 140-2 Level 2 validated HSMs at minimum.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.sku.name",
+            "notEquals": "premium"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Upgrade Key Vault to Premium SKU",
+          "Migrate existing keys to HSM-backed keys",
+          "Verify key protection level is 'HSM'",
+          "Update key rotation policies"
+        ],
+        "example_fix": "az keyvault update --name <keyvault-name> --resource-group <resource-group> --sku premium"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-005",
+      "title": "SQL Database Transparent Data Encryption Not Using Customer-Managed Keys",
+      "description": "SQL databases are using service-managed keys instead of customer-managed keys for TDE, limiting cryptographic control.",
+      "severity": "HIGH",
+      "rationale": "Section 3.6 Encryption requires FIs to maintain control over encryption keys and Section 3.5 requires unique cryptographic keys.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers/databases",
+        "conditions": [
+          {
+            "field": "properties.transparentDataEncryption.state",
+            "equals": "Enabled"
+          },
+          {
+            "field": "properties.encryption.protector",
+            "notEquals": "AzureKeyVault"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create customer-managed key in Azure Key Vault",
+          "Grant SQL Server identity access to Key Vault",
+          "Configure TDE to use customer-managed key",
+          "Verify encryption is active with CMK"
+        ],
+        "example_fix": "az sql server tde-key set --resource-group <resource-group> --server <server-name> --server-key-type AzureKeyVault --kid <key-vault-key-id>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-006",
+      "title": "Virtual Machine Missing Azure Disk Encryption",
+      "description": "Virtual machines do not have Azure Disk Encryption enabled, failing to protect data at rest as required by Section 3.6.",
+      "severity": "HIGH",
+      "rationale": "Section 3.6 requires sensitive data including data backups to be subjected to appropriate encryption controls both in-motion and at-rest.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Compute/virtualMachines",
+        "conditions": [
+          {
+            "field": "properties.storageProfile.osDisk.encryptionSettings.enabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create or identify Azure Key Vault for encryption keys",
+          "Enable Azure Disk Encryption on VM",
+          "Verify encryption status",
+          "Document encryption key management procedures"
+        ],
+        "example_fix": "az vm encryption enable --resource-group <resource-group> --name <vm-name> --disk-encryption-keyvault <keyvault-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-007",
+      "title": "Storage Account Not Enforcing HTTPS-Only Traffic",
+      "description": "Storage accounts allow unencrypted HTTP connections, violating Section 3.6 encryption requirements for data in transit.",
+      "severity": "HIGH",
+      "rationale": "Section 3.6 requires encryption of sensitive data in-motion. HTTP traffic is unencrypted and vulnerable to interception.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.supportsHttpsTrafficOnly",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable HTTPS-only traffic on storage account",
+          "Update application connection strings to use HTTPS",
+          "Test applications for connectivity",
+          "Monitor for any HTTP connection attempts"
+        ],
+        "example_fix": "az storage account update --name <storage-account-name> --resource-group <resource-group> --https-only true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-008",
+      "title": "Storage Account Missing Advanced Threat Protection",
+      "description": "Storage accounts do not have Advanced Threat Protection enabled for security monitoring as required by Section 3.14.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.14 Security Events Monitoring requires FIs to monitor the cloud environment for security events and implement automatic analysis capabilities.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.advancedThreatProtectionSettings.isEnabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable Microsoft Defender for Storage",
+          "Configure alert notifications",
+          "Integrate with Security Center",
+          "Review and respond to security alerts"
+        ],
+        "example_fix": "az security atp storage update --resource-group <resource-group> --storage-account <storage-account-name> --is-enabled true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-009",
+      "title": "SQL Server Not Enforcing Multi-Factor Authentication for Admin Access",
+      "description": "SQL Server does not require Azure AD authentication with MFA for administrative access, violating Section 3.8 and 3.9 requirements.",
+      "severity": "CRITICAL",
+      "rationale": "Section 3.9 requires multi-factor authentication for privileged access to material workloads. Section 3.10 mandates MFA for administrative remote access.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.administrators.azureADOnlyAuthentication",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Configure Azure AD administrator for SQL Server",
+          "Enable Azure AD-only authentication",
+          "Configure Conditional Access policy requiring MFA",
+          "Disable SQL authentication for admin accounts"
+        ],
+        "example_fix": "az sql server ad-admin create --resource-group <resource-group> --server <server-name> --display-name <admin-name> --object-id <admin-object-id> && az sql server update --resource-group <resource-group> --name <server-name> --enable-ad-only-auth"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-010",
+      "title": "Key Vault Not Enforcing Role-Based Access Control",
+      "description": "Key Vault is using access policies instead of Azure RBAC, limiting granular access control capabilities required by Section 3.8.",
+      "severity": "HIGH",
+      "rationale": "Section 3.8 requires authorization of user access only to information assets required for their role with least privilege principle.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.enableRbacAuthorization",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Review existing access policies and document permissions",
+          "Enable RBAC authorization on Key Vault",
+          "Assign Azure RBAC roles to users and applications",
+          "Verify access and remove old access policies"
+        ],
+        "example_fix": "az keyvault update --name <keyvault-name> --resource-group <resource-group> --enable-rbac-authorization true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-011",
+      "title": "Diagnostic Logging Not Enabled for Security Monitoring",
+      "description": "Critical resources lack diagnostic logging configuration, preventing security event monitoring required by Section 3.14.",
+      "severity": "HIGH",
+      "rationale": "Section 3.14 requires activities in the cloud environment to be logged at granular levels and consolidated centrally for security incident monitoring.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.diagnosticSettings",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create Log Analytics workspace if not exists",
+          "Enable diagnostic settings for resource",
+          "Configure log retention per policy requirements",
+          "Integrate with SIEM for monitoring"
+        ],
+        "example_fix": "az monitor diagnostic-settings create --resource <resource-id> --name <setting-name> --workspace <workspace-id> --logs '[{\"category\":\"AuditEvent\",\"enabled\":true}]' --metrics '[{\"category\":\"AllMetrics\",\"enabled\":true}]'"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-012",
+      "title": "Storage Account Not Using Immutable Blob Storage for Backups",
+      "description": "Storage accounts containing backups do not have immutability policies configured, failing to meet Section 3.15 requirements.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.15 requires securing logs and backups with robust controls to ensure confidentiality and integrity, including protection against unauthorized purging.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+        "conditions": [
+          {
+            "field": "name",
+            "contains": "backup"
+          },
+          {
+            "field": "properties.immutableStorageWithVersioning.enabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable versioning on storage account",
+          "Configure immutability policy for backup containers",
+          "Set appropriate retention period",
+          "Test restore procedures with immutable storage"
+        ],
+        "example_fix": "az storage account blob-service-properties update --account-name <storage-account-name> --enable-versioning true && az storage container immutability-policy create --account-name <storage-account-name> --container-name <container-name> --period <days>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-013",
+      "title": "Virtual Network Missing Network Security Group",
+      "description": "Virtual network subnets do not have Network Security Groups attached, violating Section 3.4 network security requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.4 requires network segregation of workloads and implementation of network access controls such as firewalls to secure environments.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Network/virtualNetworks/subnets",
+        "conditions": [
+          {
+            "field": "properties.networkSecurityGroup.id",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create Network Security Group with appropriate rules",
+          "Define inbound and outbound security rules",
+          "Associate NSG with subnet",
+          "Monitor NSG flow logs for traffic analysis"
+        ],
+        "example_fix": "az network nsg create --resource-group <resource-group> --name <nsg-name> && az network vnet subnet update --resource-group <resource-group> --vnet-name <vnet-name> --name <subnet-name> --network-security-group <nsg-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-014",
+      "title": "SQL Server Auditing Not Enabled",
+      "description": "SQL Server does not have auditing enabled to Log Analytics or Storage, preventing security event monitoring required by Section 3.14.",
+      "severity": "HIGH",
+      "rationale": "Section 3.14 requires appropriate monitoring infrastructure such as SIEM to provide automatic analysis and correlation of security logs.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.auditingSettings.state",
+            "notEquals": "Enabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable server-level auditing",
+          "Configure audit log destination (Storage or Log Analytics)",
+          "Set retention period per policy requirements",
+          "Configure audit action groups"
+        ],
+        "example_fix": "az sql server audit-policy update --resource-group <resource-group> --name <server-name> --state Enabled --storage-account <storage-account> --retention-days 90"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-015",
+      "title": "Container Registry Public Network Access Enabled",
+      "description": "Container Registry allows public network access instead of using private endpoints, violating Section 3.4 requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.4 requires FIs to control access to cloud environment and Section 3.11 requires minimizing data footprint to reduce vulnerability surface.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.ContainerRegistry/registries",
+        "conditions": [
+          {
+            "field": "properties.publicNetworkAccess",
+            "notEquals": "Disabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create private endpoint for Container Registry",
+          "Disable public network access",
+          "Update DNS configuration for private endpoint",
+          "Test container image pull/push through private endpoint"
+        ],
+        "example_fix": "az acr update --name <registry-name> --resource-group <resource-group> --public-network-enabled false"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-016",
+      "title": "Web Application Not Using Managed Identity",
+      "description": "App Services are not using managed identities for authentication, relying on connection strings that violate Section 3.8 requirements.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.8 requires proper identity and access management. Managed identities eliminate credential management and provide least privilege access.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Web/sites",
+        "conditions": [
+          {
+            "field": "identity.type",
+            "notEquals": "SystemAssigned"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable system-assigned managed identity on App Service",
+          "Grant managed identity access to required resources",
+          "Update application code to use managed identity",
+          "Remove connection strings from configuration"
+        ],
+        "example_fix": "az webapp identity assign --name <app-name> --resource-group <resource-group>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-017",
+      "title": "Storage Account Not Using Private Endpoints",
+      "description": "Storage accounts are accessible via public endpoints instead of private endpoints, violating Section 3.4 network architecture requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.4 requires implementing private connectivity and restricting direct internet access for cloud resources.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.privateEndpointConnections",
+            "exists": false
+          },
+          {
+            "field": "properties.publicNetworkAccess",
+            "equals": "Enabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create private endpoint for storage account",
+          "Configure private DNS zone",
+          "Disable public network access",
+          "Verify connectivity through private endpoint"
+        ],
+        "example_fix": "az network private-endpoint create --name <pe-name> --resource-group <resource-group> --vnet-name <vnet-name> --subnet <subnet-name> --private-connection-resource-id <storage-id> --group-id blob --connection-name <connection-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-018",
+      "title": "Virtual Machine Missing Just-In-Time Access Control",
+      "description": "Virtual machines do not have JIT access enabled, allowing persistent administrative access that violates Section 3.9 requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.9 requires privileged remote access to be permitted only by authorized exception and be time bound.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Compute/virtualMachines",
+        "conditions": [
+          {
+            "field": "properties.jitAccessEnabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable Microsoft Defender for Cloud",
+          "Configure JIT VM access policy",
+          "Define maximum request duration",
+          "Train administrators on JIT access request process"
+        ],
+        "example_fix": "az security jit-policy create --resource-group <resource-group> --location <location> --name <policy-name> --virtual-machines <vm-id> --port 22 --protocol TCP --max-request-duration PT3H --allowed-source-address-prefix <admin-ip>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-019",
+      "title": "SQL Database Missing Vulnerability Assessment",
+      "description": "SQL databases do not have vulnerability assessments configured, preventing identification of security gaps required by Section C.6.",
+      "severity": "MEDIUM",
+      "rationale": "Section C.6 requires FIs to remediate vulnerabilities according to criticality and implement scanning to identify potential vulnerabilities.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers/databases",
+        "conditions": [
+          {
+            "field": "properties.vulnerabilityAssessment.recurringScans.isEnabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable Microsoft Defender for SQL",
+          "Configure vulnerability assessment storage",
+          "Enable recurring scans",
+          "Configure email notifications for scan results"
+        ],
+        "example_fix": "az sql server va update --resource-group <resource-group> --server <server-name> --storage-account <storage-account> --recurring-scans Enabled --email-admins Enabled"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-020",
+      "title": "Key Vault Missing Soft Delete and Purge Protection",
+      "description": "Key Vault does not have soft delete and purge protection enabled, risking permanent key loss that violates Section 3.5 requirements.",
+      "severity": "CRITICAL",
+      "rationale": "Section 3.5 requires implementing backup of cryptographic material and suitably secure environment for offline storage as any loss may materially impact recovery.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "anyOf": [
+              {
+                "field": "properties.enableSoftDelete",
+                "notEquals": true
+              },
+              {
+                "field": "properties.enablePurgeProtection",
+                "notEquals": true
+              }
+            ]
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable soft delete on Key Vault",
+          "Enable purge protection on Key Vault",
+          "Document key recovery procedures",
+          "Test key recovery from soft delete"
+        ],
+        "example_fix": "az keyvault update --name <keyvault-name> --resource-group <resource-group> --enable-soft-delete true --enable-purge-protection true"
+      }
+    }
+  ],
+  "manual_checks": [
+    "Cloud Governance Framework and CSP Concentration Risk Management (Section 2.1)",
+    "Contractual SLA Agreements and Enforceable Liquidated Damages (Section 2.2)",
+    "Data Retention and Deletion Verification Post-Contract Exit (Section 2.2)",
+    "Cross-Border Data Transfer Legal Review and Jurisdictional Assessment (Section 2.2)",
+    "Third-Party Subcontractor Risk Assessment and Approval Process (Section 2.2)",
+    "Business Continuity and Disaster Recovery Plan Testing with CSP (Section C.7)",
+    "Incident Response Plan Review and Regulatory Notification Procedures (Section C.4)",
+    "Penetration Testing Coordination and Remediation Tracking (Section 3.13)",
+    "Change Management Governance and CSP Collaboration (Section C.1)",
+    "Privileged User Access Review and 'Never Alone' Principle Verification (Section 3.9)",
+    "Source Code Review and Secure SDLC Implementation (Section 3.12)",
+    "DevOps CI/CD Pipeline Security Controls and Segregation of Duties (Section 3.2)",
+    "Cost Management and Cloud Usage Financial Tracking (Section A.3)",
+    "Skills and Training Program for Cloud Security Management (Section A.1)",
+    "Post-Implementation Review of Cloud Outsourcing Arrangements (Section 2.2)"
+  ]
+}
