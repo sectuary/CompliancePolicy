@@ -2,16 +2,40 @@
   "category": "Custom Policy",
   "subcategory": "Generated from ABS Cloud Computing Implementation Guide 3.0",
   "version": "1.0.0",
-  "generated_at": "2025-12-04T02:35:06.449Z",
+  "generated_at": "2025-12-04T02:35:15.500Z",
   "source_document": "abs-cloud-computing-implementation-guide---july-2024.md",
   "source_repo": "sectuary/CompliancePolicy",
   "standards": [
     {
       "id": "CUSTOM-POLICY-101",
+      "title": "Storage Account Public Network Access Not Disabled",
+      "description": "Storage accounts should have public network access disabled to prevent unauthorized access from the internet. All access should be through private endpoints or service endpoints.",
+      "severity": "CRITICAL",
+      "rationale": "Public cloud environments require strict network controls. Direct internet access increases attack surface and violates the principle of network segmentation recommended in Section 3.B.4.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.publicNetworkAccess",
+            "notEquals": "Disabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Disable public network access on the storage account",
+          "Configure private endpoints or service endpoints for access",
+          "Update firewall rules to allow only specific virtual networks"
+        ],
+        "example_fix": "az storage account update --name <storage-account-name> --resource-group <rg-name> --public-network-access Disabled"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-102",
       "title": "Storage Account Encryption Not Using Customer-Managed Keys",
-      "description": "Storage accounts should use customer-managed encryption keys (BYOK) to maintain control over cryptographic material as recommended in the guide's cryptographic key management section.",
+      "description": "Storage accounts should use customer-managed keys (CMK) for encryption to maintain control over cryptographic material as required by the guide's key management controls.",
       "severity": "HIGH",
-      "rationale": "Using customer-managed keys ensures the FI maintains control over encryption keys and can meet data sovereignty requirements. CSP-managed keys may not provide sufficient control for sensitive financial data.",
+      "rationale": "Section 3.B.5 requires FIs to generate and manage their own cryptographic keys. Customer-managed keys provide greater control over key lifecycle and meet FIPS 140-2 Level 2 requirements.",
       "detection_criteria": {
         "resource_type": "Microsoft.Storage/storageAccounts",
         "conditions": [
@@ -23,22 +47,81 @@
       },
       "remediation": {
         "steps": [
-          "Create or identify an Azure Key Vault with appropriate access policies",
-          "Generate or import a customer-managed key in the Key Vault",
-          "Configure the storage account to use the customer-managed key for encryption",
-          "Verify encryption settings and test key rotation procedures"
+          "Create a Key Vault with appropriate access policies",
+          "Generate or import a customer-managed key",
+          "Configure storage account to use the CMK for encryption"
         ],
-        "example_fix": "az storage account update --name <storage-account> --resource-group <rg> --encryption-key-source Microsoft.Keyvault --encryption-key-vault <key-vault-uri> --encryption-key-name <key-name>"
+        "example_fix": "az storage account update --name <storage-account-name> --resource-group <rg-name> --encryption-key-source Microsoft.Keyvault --encryption-key-vault <vault-uri> --encryption-key-name <key-name>"
       }
     },
     {
-      "id": "CUSTOM-POLICY-102",
-      "title": "Storage Account Allows Public Network Access",
-      "description": "Storage accounts should disable public network access and require private endpoints or service endpoints to prevent unauthorized internet access.",
+      "id": "CUSTOM-POLICY-103",
+      "title": "Network Security Group Allows Unrestricted Internet Ingress",
+      "description": "Network Security Groups should not allow unrestricted inbound access from the internet (0.0.0.0/0) on any port to prevent unauthorized access attempts.",
       "severity": "CRITICAL",
-      "rationale": "Public network access increases the attack surface and violates the principle of network segregation. Financial data should only be accessible through secured, private connections.",
+      "rationale": "Section 3.B.4 mandates network segmentation and restricting internet access. Unrestricted ingress rules violate the need-to-basis access principle and increase exposure to network-based attacks.",
       "detection_criteria": {
-        "resource_type": "Microsoft.Storage/storageAccounts",
+        "resource_type": "Microsoft.Network/networkSecurityGroups/securityRules",
+        "conditions": [
+          {
+            "field": "properties.direction",
+            "equals": "Inbound"
+          },
+          {
+            "field": "properties.access",
+            "equals": "Allow"
+          },
+          {
+            "field": "properties.sourceAddressPrefix",
+            "in": [
+              "*",
+              "0.0.0.0/0",
+              "Internet"
+            ]
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Review and restrict source IP ranges to specific trusted addresses",
+          "Implement application gateway or firewall for public-facing services",
+          "Use private endpoints for internal services"
+        ],
+        "example_fix": "az network nsg rule update --nsg-name <nsg-name> --resource-group <rg-name> --name <rule-name> --source-address-prefixes <specific-ip-range>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-104",
+      "title": "Key Vault Soft Delete Not Enabled",
+      "description": "Key Vaults must have soft delete enabled to protect against accidental or malicious deletion of cryptographic keys, as required by cryptographic key management controls.",
+      "severity": "HIGH",
+      "rationale": "Section 3.B.5 emphasizes protecting cryptographic material from compromise. Soft delete provides recovery capability for accidentally deleted keys that could render data irrecoverable.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.enableSoftDelete",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable soft delete on the Key Vault",
+          "Configure retention period (recommended 90 days)",
+          "Enable purge protection for critical vaults"
+        ],
+        "example_fix": "az keyvault update --name <vault-name> --resource-group <rg-name> --enable-soft-delete true --retention-days 90"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-105",
+      "title": "Key Vault Not Using Private Endpoint",
+      "description": "Key Vaults containing cryptographic material should use private endpoints and disable public network access to prevent unauthorized access attempts.",
+      "severity": "HIGH",
+      "rationale": "Section 3.B.5 requires storing encryption keys separately with strict network controls. Public access to Key Vault violates network segmentation principles and increases attack surface.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
         "conditions": [
           {
             "field": "properties.publicNetworkAccess",
@@ -48,162 +131,49 @@
       },
       "remediation": {
         "steps": [
-          "Create private endpoints for the storage account",
-          "Configure DNS to resolve to private endpoints",
-          "Disable public network access on the storage account",
-          "Verify connectivity through private endpoints only"
+          "Create a private endpoint for the Key Vault",
+          "Disable public network access",
+          "Update applications to use private endpoint connection"
         ],
-        "example_fix": "az storage account update --name <storage-account> --resource-group <rg> --public-network-access Disabled"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-103",
-      "title": "Virtual Machine Missing Encryption at Host",
-      "description": "Virtual machines should have encryption at host enabled to ensure data at rest on the VM host is encrypted, providing additional protection for sensitive workloads.",
-      "severity": "HIGH",
-      "rationale": "Encryption at host provides end-to-end encryption including temporary disks, OS and data disk caches, ensuring comprehensive data protection for financial workloads.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Compute/virtualMachines",
-        "conditions": [
-          {
-            "field": "properties.securityProfile.encryptionAtHost",
-            "notEquals": true
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Stop the virtual machine",
-          "Enable encryption at host feature",
-          "Restart the virtual machine",
-          "Verify encryption status"
-        ],
-        "example_fix": "az vm update --resource-group <rg> --name <vm-name> --set securityProfile.encryptionAtHost=true"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-104",
-      "title": "Network Security Group Allows Unrestricted RDP Access",
-      "description": "Network security groups should not allow unrestricted RDP access (port 3389) from the internet. Administrative access should be restricted to specific IP ranges.",
-      "severity": "CRITICAL",
-      "rationale": "Unrestricted RDP access from the internet is a common attack vector. Administrative interfaces should be segregated and accessible only through secured channels as per the guide's network architecture requirements.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Network/networkSecurityGroups/securityRules",
-        "conditions": [
-          {
-            "field": "properties.access",
-            "equals": "Allow"
-          },
-          {
-            "field": "properties.direction",
-            "equals": "Inbound"
-          },
-          {
-            "field": "properties.destinationPortRange",
-            "contains": "3389"
-          },
-          {
-            "field": "properties.sourceAddressPrefix",
-            "in": [
-              "*",
-              "Internet",
-              "0.0.0.0/0"
-            ]
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Identify legitimate source IP addresses requiring RDP access",
-          "Update NSG rule to restrict source to specific IP ranges",
-          "Consider using Azure Bastion for administrative access",
-          "Implement just-in-time VM access for additional security"
-        ],
-        "example_fix": "az network nsg rule update --resource-group <rg> --nsg-name <nsg-name> --name <rule-name> --source-address-prefixes <allowed-ip-range>"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-105",
-      "title": "Network Security Group Allows Unrestricted SSH Access",
-      "description": "Network security groups should not allow unrestricted SSH access (port 22) from the internet. Administrative access should be restricted to specific IP ranges or through secure channels.",
-      "severity": "CRITICAL",
-      "rationale": "Unrestricted SSH access increases vulnerability to brute force attacks and unauthorized access. Administrative remote access should be controlled and monitored as per the guide's administrative remote access requirements.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Network/networkSecurityGroups/securityRules",
-        "conditions": [
-          {
-            "field": "properties.access",
-            "equals": "Allow"
-          },
-          {
-            "field": "properties.direction",
-            "equals": "Inbound"
-          },
-          {
-            "field": "properties.destinationPortRange",
-            "contains": "22"
-          },
-          {
-            "field": "properties.sourceAddressPrefix",
-            "in": [
-              "*",
-              "Internet",
-              "0.0.0.0/0"
-            ]
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Identify legitimate source IP addresses requiring SSH access",
-          "Update NSG rule to restrict source to specific IP ranges",
-          "Implement SSH key-based authentication",
-          "Consider using Azure Bastion for administrative access"
-        ],
-        "example_fix": "az network nsg rule update --resource-group <rg> --nsg-name <nsg-name> --name <rule-name> --source-address-prefixes <allowed-ip-range>"
+        "example_fix": "az keyvault update --name <vault-name> --resource-group <rg-name> --public-network-access Disabled"
       }
     },
     {
       "id": "CUSTOM-POLICY-106",
-      "title": "SQL Server Missing Advanced Threat Protection",
-      "description": "SQL Servers should have Advanced Threat Protection enabled to detect anomalous activities and potential security threats as per the guide's security events monitoring requirements.",
+      "title": "SQL Server Auditing Not Enabled",
+      "description": "SQL Servers must have auditing enabled to capture security events and administrative actions for security monitoring and incident investigation.",
       "severity": "HIGH",
-      "rationale": "Advanced Threat Protection provides intelligent threat detection and helps identify potential security incidents early, enabling timely response as required by the incident management controls.",
+      "rationale": "Section 3.B.14 requires security events monitoring and logging at granular levels. Auditing provides detailed logs for investigating security incidents and detecting unauthorized activities.",
       "detection_criteria": {
         "resource_type": "Microsoft.Sql/servers",
         "conditions": [
           {
-            "field": "properties.securityAlertPolicies",
-            "exists": false
+            "field": "properties.auditingSettings.state",
+            "notEquals": "Enabled"
           }
         ]
       },
       "remediation": {
         "steps": [
-          "Enable Advanced Threat Protection on the SQL Server",
-          "Configure email notifications for threat alerts",
-          "Integrate alerts with SIEM for centralized monitoring",
-          "Review and respond to alerts regularly"
+          "Enable auditing on SQL Server",
+          "Configure audit log destination (Storage Account or Log Analytics)",
+          "Set retention period according to policy requirements"
         ],
-        "example_fix": "az sql server threat-policy update --resource-group <rg> --server <server-name> --state Enabled --email-addresses <admin-email>"
+        "example_fix": "az sql server audit-policy update --resource-group <rg-name> --server <server-name> --state Enabled --storage-account <storage-account-name>"
       }
     },
     {
       "id": "CUSTOM-POLICY-107",
-      "title": "SQL Server Not Using Transparent Data Encryption",
-      "description": "SQL Servers should have Transparent Data Encryption (TDE) enabled to protect data at rest, meeting the guide's encryption requirements for sensitive financial data.",
+      "title": "SQL Server Transparent Data Encryption Not Enabled",
+      "description": "SQL databases should have Transparent Data Encryption (TDE) enabled to protect data at rest, especially for databases containing sensitive financial information.",
       "severity": "CRITICAL",
-      "rationale": "TDE encrypts database files at rest, ensuring confidentiality of sensitive financial data stored in databases. This is a fundamental control for data protection in cloud environments.",
+      "rationale": "Section 3.B.6 requires encryption of sensitive data at rest. TDE provides automatic encryption for database files, meeting confidentiality requirements for financial data.",
       "detection_criteria": {
         "resource_type": "Microsoft.Sql/servers/databases",
         "conditions": [
           {
-            "field": "properties.transparentDataEncryption",
+            "field": "properties.transparentDataEncryption.state",
             "notEquals": "Enabled"
-          },
-          {
-            "field": "name",
-            "notEquals": "master"
           }
         ]
       },
@@ -211,20 +181,43 @@
         "steps": [
           "Enable Transparent Data Encryption on the database",
           "Consider using customer-managed keys for TDE",
-          "Verify encryption status",
-          "Document key management procedures"
+          "Verify encryption status after enablement"
         ],
-        "example_fix": "az sql db tde set --resource-group <rg> --server <server-name> --database <db-name> --status Enabled"
+        "example_fix": "az sql db tde set --resource-group <rg-name> --server <server-name> --database <db-name> --status Enabled"
       }
     },
     {
       "id": "CUSTOM-POLICY-108",
-      "title": "Key Vault Not Using Private Endpoints",
-      "description": "Key Vaults should use private endpoints and disable public network access to ensure cryptographic keys are only accessible through secure private connections.",
+      "title": "Virtual Machine Disk Encryption Not Enabled",
+      "description": "Virtual machines should have disk encryption enabled using Azure Disk Encryption to protect data at rest on compute resources.",
       "severity": "HIGH",
-      "rationale": "Key Vaults store critical cryptographic material. Public network access increases the risk of unauthorized access. Private endpoints ensure keys are accessed only through secured networks.",
+      "rationale": "Section 3.B.6 mandates encryption of sensitive data at rest. VM disk encryption protects against unauthorized access to data if disks are compromised or accessed offline.",
       "detection_criteria": {
-        "resource_type": "Microsoft.KeyVault/vaults",
+        "resource_type": "Microsoft.Compute/virtualMachines",
+        "conditions": [
+          {
+            "field": "properties.storageProfile.osDisk.encryptionSettings.enabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create or use existing Key Vault for encryption keys",
+          "Enable Azure Disk Encryption on the VM",
+          "Verify encryption status on all disks"
+        ],
+        "example_fix": "az vm encryption enable --resource-group <rg-name> --name <vm-name> --disk-encryption-keyvault <keyvault-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-109",
+      "title": "Container Registry Not Using Private Endpoint",
+      "description": "Container registries should use private endpoints and disable public network access to secure container images from unauthorized access.",
+      "severity": "HIGH",
+      "rationale": "Section 3.B.2 addresses securing container images. Public access to registries could expose proprietary code and vulnerabilities, violating network segmentation requirements.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.ContainerRegistry/registries",
         "conditions": [
           {
             "field": "properties.publicNetworkAccess",
@@ -234,53 +227,43 @@
       },
       "remediation": {
         "steps": [
-          "Create private endpoints for the Key Vault",
-          "Configure DNS to resolve to private endpoints",
+          "Create private endpoint for container registry",
           "Disable public network access",
-          "Test key access through private endpoints"
+          "Update pull configurations to use private endpoint"
         ],
-        "example_fix": "az keyvault update --name <vault-name> --resource-group <rg> --public-network-access Disabled"
+        "example_fix": "az acr update --name <registry-name> --resource-group <rg-name> --public-network-enabled false"
       }
     },
     {
-      "id": "CUSTOM-POLICY-109",
-      "title": "Key Vault Missing Soft Delete Protection",
-      "description": "Key Vaults should have soft delete and purge protection enabled to prevent accidental or malicious deletion of cryptographic keys, ensuring data recoverability.",
+      "id": "CUSTOM-POLICY-110",
+      "title": "Diagnostic Settings Not Configured for Security Logging",
+      "description": "Resources should have diagnostic settings configured to send security logs to centralized logging (Log Analytics or Storage Account) for security monitoring.",
       "severity": "HIGH",
-      "rationale": "Soft delete and purge protection prevent permanent loss of encryption keys. Loss of keys can result in permanent data loss and inability to operate, as noted in the guide's key management section.",
+      "rationale": "Section 3.B.14 requires consolidation of logs to centralized system. Diagnostic settings enable streaming of security events to SIEM for correlation and incident detection.",
       "detection_criteria": {
-        "resource_type": "Microsoft.KeyVault/vaults",
+        "resource_type": "Microsoft.Insights/diagnosticSettings",
         "conditions": [
           {
-            "anyOf": [
-              {
-                "field": "properties.enableSoftDelete",
-                "notEquals": true
-              },
-              {
-                "field": "properties.enablePurgeProtection",
-                "notEquals": true
-              }
-            ]
+            "field": "properties.logs",
+            "exists": false
           }
         ]
       },
       "remediation": {
         "steps": [
-          "Enable soft delete on the Key Vault",
-          "Enable purge protection",
-          "Configure retention period (minimum 90 days recommended)",
-          "Document key recovery procedures"
+          "Create diagnostic settings for the resource",
+          "Configure log categories (SecurityAudit, Administrative)",
+          "Set destination to Log Analytics workspace or Storage Account"
         ],
-        "example_fix": "az keyvault update --name <vault-name> --resource-group <rg> --enable-soft-delete true --enable-purge-protection true"
+        "example_fix": "az monitor diagnostic-settings create --name <settings-name> --resource <resource-id> --workspace <workspace-id> --logs '[{\"category\":\"Administrative\",\"enabled\":true}]'"
       }
     },
     {
-      "id": "CUSTOM-POLICY-110",
+      "id": "CUSTOM-POLICY-111",
       "title": "Web App Not Using HTTPS Only",
-      "description": "Web Apps should enforce HTTPS only to ensure all data in transit is encrypted, preventing man-in-the-middle attacks and data interception.",
-      "severity": "HIGH",
-      "rationale": "Unencrypted HTTP traffic exposes sensitive financial data to interception. HTTPS enforcement ensures confidentiality and integrity of data in transit as required by the guide's encryption controls.",
+      "description": "Web applications must enforce HTTPS-only connections to ensure data in transit is encrypted, preventing interception of sensitive information.",
+      "severity": "CRITICAL",
+      "rationale": "Section 3.B.6 requires encryption of data in motion. HTTPS-only enforcement prevents unencrypted HTTP traffic that could expose authentication credentials or financial data.",
       "detection_criteria": {
         "resource_type": "Microsoft.Web/sites",
         "conditions": [
@@ -292,20 +275,19 @@
       },
       "remediation": {
         "steps": [
-          "Enable HTTPS Only setting on the Web App",
-          "Ensure valid SSL/TLS certificates are configured",
-          "Test application functionality over HTTPS",
-          "Update any hard-coded HTTP references"
+          "Enable HTTPS Only setting on the web app",
+          "Verify TLS version is 1.2 or higher",
+          "Test application functionality after enabling"
         ],
-        "example_fix": "az webapp update --name <app-name> --resource-group <rg> --set httpsOnly=true"
+        "example_fix": "az webapp update --name <app-name> --resource-group <rg-name> --set httpsOnly=true"
       }
     },
     {
-      "id": "CUSTOM-POLICY-111",
+      "id": "CUSTOM-POLICY-112",
       "title": "Web App Not Using Minimum TLS Version 1.2",
-      "description": "Web Apps should enforce minimum TLS version 1.2 or higher to prevent use of weak cryptographic protocols that can be exploited.",
+      "description": "Web applications should enforce TLS 1.2 or higher to protect data in transit with strong cryptographic protocols.",
       "severity": "HIGH",
-      "rationale": "Older TLS versions have known vulnerabilities. Using TLS 1.2 or higher ensures strong encryption as recommended in the guide's encryption and network security requirements.",
+      "rationale": "Section 3.B.6 emphasizes using strong encryption algorithms. TLS versions below 1.2 have known vulnerabilities and do not meet current security standards for financial institutions.",
       "detection_criteria": {
         "resource_type": "Microsoft.Web/sites",
         "conditions": [
@@ -320,268 +302,181 @@
       },
       "remediation": {
         "steps": [
-          "Update Web App configuration to require TLS 1.2 minimum",
-          "Test application compatibility with TLS 1.2",
-          "Update client applications if necessary",
-          "Monitor for any connection issues"
+          "Update minimum TLS version to 1.2 or 1.3",
+          "Test client compatibility",
+          "Update any legacy clients or APIs"
         ],
-        "example_fix": "az webapp config set --name <app-name> --resource-group <rg> --min-tls-version 1.2"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-112",
-      "title": "Container Registry Missing Customer-Managed Keys",
-      "description": "Container Registries should use customer-managed encryption keys to maintain control over container image encryption as recommended for sensitive workloads.",
-      "severity": "MEDIUM",
-      "rationale": "Container images may contain sensitive configuration or proprietary code. Customer-managed keys ensure the FI maintains control over encryption as per the guide's containerization security requirements.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.ContainerRegistry/registries",
-        "conditions": [
-          {
-            "field": "properties.encryption.keyVaultProperties",
-            "exists": false
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Create or identify a Key Vault with appropriate access",
-          "Generate a customer-managed key in the Key Vault",
-          "Configure the Container Registry to use the customer-managed key",
-          "Verify encryption settings"
-        ],
-        "example_fix": "az acr encryption set --name <registry-name> --key-encryption-key <key-identifier> --identity <managed-identity>"
+        "example_fix": "az webapp config set --name <app-name> --resource-group <rg-name> --min-tls-version 1.2"
       }
     },
     {
       "id": "CUSTOM-POLICY-113",
-      "title": "Virtual Network Missing DDoS Protection",
-      "description": "Virtual Networks should have DDoS Protection Standard enabled to protect against distributed denial of service attacks on critical infrastructure.",
+      "title": "SQL Server Advanced Threat Protection Not Enabled",
+      "description": "SQL Servers should have Advanced Threat Protection enabled to detect anomalous activities and potential security threats in real-time.",
       "severity": "HIGH",
-      "rationale": "DDoS attacks can disrupt critical financial services. DDoS Protection Standard provides enhanced mitigation capabilities as recommended in the guide's network architecture controls.",
+      "rationale": "Section 3.B.14 requires security event monitoring to detect suspicious activities. Advanced Threat Protection provides automated detection of SQL injection, data exfiltration, and unusual access patterns.",
       "detection_criteria": {
-        "resource_type": "Microsoft.Network/virtualNetworks",
+        "resource_type": "Microsoft.Sql/servers",
         "conditions": [
           {
-            "field": "properties.enableDdosProtection",
-            "notEquals": true
+            "field": "properties.securityAlertPolicies.state",
+            "notEquals": "Enabled"
           }
         ]
       },
       "remediation": {
         "steps": [
-          "Create or identify a DDoS Protection Plan",
-          "Enable DDoS Protection on the Virtual Network",
-          "Configure DDoS telemetry and alerts",
-          "Test DDoS response procedures"
+          "Enable Advanced Threat Protection on SQL Server",
+          "Configure email notifications for security alerts",
+          "Integrate with Security Center for centralized monitoring"
         ],
-        "example_fix": "az network vnet update --name <vnet-name> --resource-group <rg> --ddos-protection true --ddos-protection-plan <plan-id>"
+        "example_fix": "az sql server threat-policy update --resource-group <rg-name> --server <server-name> --state Enabled --email-addresses <admin-email>"
       }
     },
     {
       "id": "CUSTOM-POLICY-114",
-      "title": "Storage Account Missing Logging Configuration",
-      "description": "Storage Accounts should have diagnostic logging enabled to monitor access and detect unauthorized activities as required by the guide's security events monitoring.",
-      "severity": "MEDIUM",
-      "rationale": "Comprehensive logging is essential for security incident detection and investigation. Storage account logs provide visibility into access patterns and potential security events.",
+      "title": "Storage Account Not Using Private Endpoint for Blob Service",
+      "description": "Storage account blob services should use private endpoints to prevent public internet access to data stored in containers.",
+      "severity": "HIGH",
+      "rationale": "Section 3.B.4 requires dedicated security network segments for all egress traffic. Private endpoints ensure blob data access is restricted to authorized virtual networks only.",
       "detection_criteria": {
         "resource_type": "Microsoft.Storage/storageAccounts",
         "conditions": [
           {
-            "field": "properties.logging",
+            "field": "properties.privateEndpointConnections",
+            "exists": false
+          },
+          {
+            "field": "properties.publicNetworkAccess",
+            "notEquals": "Disabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create private endpoint for blob service",
+          "Configure DNS for private endpoint resolution",
+          "Disable public network access after validating connectivity"
+        ],
+        "example_fix": "az network private-endpoint create --name <pe-name> --resource-group <rg-name> --vnet-name <vnet-name> --subnet <subnet-name> --private-connection-resource-id <storage-account-id> --group-id blob --connection-name <connection-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-115",
+      "title": "Storage Account Not Using Immutable Blob Storage",
+      "description": "Storage accounts used for audit logs and backups should have immutable blob storage enabled to prevent tampering or deletion of critical data.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.B.15 requires securing logs and backups against unauthorized modification. Immutable storage provides WORM (Write Once Read Many) capability for compliance and forensic purposes.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+        "conditions": [
+          {
+            "field": "properties.immutableStorageWithVersioning.enabled",
+            "notEquals": true
+          },
+          {
+            "field": "name",
+            "matches": ".*(log|audit|backup).*"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable versioning on the storage account",
+          "Configure immutable storage policy on container",
+          "Set appropriate retention period for compliance requirements"
+        ],
+        "example_fix": "az storage container immutability-policy create --account-name <storage-account-name> --container-name <container-name> --period 365"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-116",
+      "title": "Key Vault Keys Not Set for Automatic Rotation",
+      "description": "Cryptographic keys in Key Vault should have automatic rotation enabled to comply with key lifecycle management requirements.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.B.5 requires regular key rotation according to industry best practices. Automatic rotation reduces risk of key compromise and ensures compliance with cryptographic policies.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults/keys",
+        "conditions": [
+          {
+            "field": "properties.rotationPolicy",
             "exists": false
           }
         ]
       },
       "remediation": {
         "steps": [
-          "Create or identify a Log Analytics workspace",
-          "Enable diagnostic settings for the storage account",
-          "Configure logging for blob, queue, table, and file services",
-          "Set appropriate retention period"
+          "Define key rotation policy with appropriate frequency",
+          "Configure automatic rotation in Key Vault",
+          "Update applications to handle key rotation gracefully"
         ],
-        "example_fix": "az monitor diagnostic-settings create --name <setting-name> --resource <storage-account-id> --workspace <workspace-id> --logs '[{\"category\":\"StorageRead\",\"enabled\":true},{\"category\":\"StorageWrite\",\"enabled\":true}]'"
+        "example_fix": "az keyvault key rotation-policy update --vault-name <vault-name> --name <key-name> --value '{\"lifetimeActions\":[{\"trigger\":{\"timeAfterCreate\":\"P90D\"},\"action\":{\"type\":\"Rotate\"}}],\"attributes\":{\"expiryTime\":\"P365D\"}}'"
       }
     },
     {
-      "id": "CUSTOM-POLICY-115",
-      "title": "SQL Server Missing Audit Log Retention",
-      "description": "SQL Servers should have audit logging configured with appropriate retention periods to support incident investigation and compliance requirements.",
-      "severity": "MEDIUM",
-      "rationale": "Audit logs are critical for detecting security events and conducting forensic investigations. The guide requires centralized logging with appropriate retention for security monitoring.",
+      "id": "CUSTOM-POLICY-117",
+      "title": "Virtual Network Not Using Network Security Groups",
+      "description": "Virtual network subnets should have Network Security Groups attached to control and filter network traffic according to security requirements.",
+      "severity": "HIGH",
+      "rationale": "Section 3.B.4 mandates network segmentation and access controls. NSGs provide essential firewall rules to restrict traffic between subnets and prevent lateral movement.",
       "detection_criteria": {
-        "resource_type": "Microsoft.Sql/servers",
+        "resource_type": "Microsoft.Network/virtualNetworks/subnets",
         "conditions": [
           {
-            "field": "properties.auditingSettings.retentionDays",
+            "field": "properties.networkSecurityGroup",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create Network Security Group with appropriate rules",
+          "Associate NSG with the subnet",
+          "Document and review rules regularly"
+        ],
+        "example_fix": "az network vnet subnet update --name <subnet-name> --vnet-name <vnet-name> --resource-group <rg-name> --network-security-group <nsg-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-118",
+      "title": "Log Analytics Workspace Data Retention Not Configured",
+      "description": "Log Analytics workspaces should have data retention configured according to regulatory and compliance requirements for security log preservation.",
+      "severity": "MEDIUM",
+      "rationale": "Section 3.B.15 requires log retention aligned with FI record retention policy. Adequate retention ensures availability of logs for forensic investigation and regulatory compliance.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.OperationalInsights/workspaces",
+        "conditions": [
+          {
+            "field": "properties.retentionInDays",
             "lessThan": 90
           }
         ]
       },
       "remediation": {
         "steps": [
-          "Enable SQL Server auditing",
-          "Configure retention period to at least 90 days",
-          "Set up storage account or Log Analytics for audit logs",
-          "Configure alerts for suspicious activities"
+          "Review regulatory requirements for log retention",
+          "Update workspace retention to minimum 90 days",
+          "Configure archive for long-term storage if needed"
         ],
-        "example_fix": "az sql server audit-policy update --resource-group <rg> --server <server-name> --state Enabled --storage-account <storage-account> --retention-days 90"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-116",
-      "title": "Storage Account Missing Immutable Blob Storage",
-      "description": "Storage Accounts used for backup and archival should have immutable blob storage enabled to prevent tampering with critical data as per the guide's data integrity requirements.",
-      "severity": "HIGH",
-      "rationale": "Immutable storage prevents deletion or modification of backup data, ensuring data integrity for recovery scenarios and meeting regulatory requirements for data retention.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Storage/storageAccounts/blobServices/containers",
-        "conditions": [
-          {
-            "field": "properties.immutableStorageWithVersioning",
-            "exists": false
-          },
-          {
-            "field": "name",
-            "contains": "backup"
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Enable immutable blob storage on backup containers",
-          "Configure time-based retention policy",
-          "Test restore procedures with immutable storage",
-          "Document retention policy requirements"
-        ],
-        "example_fix": "az storage container immutability-policy create --account-name <storage-account> --container-name <container> --period 365"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-117",
-      "title": "Virtual Machine Missing Backup Configuration",
-      "description": "Production virtual machines should have Azure Backup configured to ensure business continuity and disaster recovery capabilities as required by the guide.",
-      "severity": "HIGH",
-      "rationale": "Regular backups are essential for disaster recovery and business continuity. The guide requires validated backup and recovery procedures for critical systems.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Compute/virtualMachines",
-        "conditions": [
-          {
-            "field": "properties.protectionPolicy",
-            "exists": false
-          },
-          {
-            "field": "tags.Environment",
-            "equals": "Production"
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Create or identify a Recovery Services Vault",
-          "Configure backup policy with appropriate retention",
-          "Enable backup for the virtual machine",
-          "Perform test restore to validate backup"
-        ],
-        "example_fix": "az backup protection enable-for-vm --resource-group <rg> --vault-name <vault-name> --vm <vm-name> --policy-name <policy-name>"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-118",
-      "title": "Key Vault Missing Access Policy Restrictions",
-      "description": "Key Vaults should use least privilege access policies, restricting access to only necessary identities and operations as per the guide's privileged access management requirements.",
-      "severity": "HIGH",
-      "rationale": "Overly permissive Key Vault access increases risk of unauthorized key usage or exposure. Access should be limited to specific identities with only required permissions.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.KeyVault/vaults",
-        "conditions": [
-          {
-            "field": "properties.accessPolicies[*].permissions.keys",
-            "contains": "all"
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Review current access policies and identify excessive permissions",
-          "Update access policies to grant minimum required permissions",
-          "Remove any 'all' permissions grants",
-          "Implement regular access reviews"
-        ],
-        "example_fix": "az keyvault set-policy --name <vault-name> --object-id <object-id> --key-permissions get list --secret-permissions get list"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-119",
-      "title": "Web App Missing Authentication Configuration",
-      "description": "Web Apps should have authentication enabled to ensure only authorized users can access the application, supporting the guide's user access management requirements.",
-      "severity": "HIGH",
-      "rationale": "Unauthenticated access to web applications increases security risk. Authentication should be enforced for all applications handling sensitive financial data.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.Web/sites",
-        "conditions": [
-          {
-            "field": "properties.siteConfig.authSettings.enabled",
-            "notEquals": true
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Configure authentication provider (Azure AD recommended)",
-          "Enable authentication on the Web App",
-          "Configure required authentication scopes",
-          "Test authentication flow"
-        ],
-        "example_fix": "az webapp auth update --name <app-name> --resource-group <rg> --enabled true --action LoginWithAzureActiveDirectory"
-      }
-    },
-    {
-      "id": "CUSTOM-POLICY-120",
-      "title": "Container Registry Allows Unrestricted Network Access",
-      "description": "Container Registries should restrict network access to prevent unauthorized access to container images, which may contain sensitive configuration or code.",
-      "severity": "HIGH",
-      "rationale": "Container images may contain sensitive application code and configuration. Restricting network access ensures images are only accessible from authorized networks.",
-      "detection_criteria": {
-        "resource_type": "Microsoft.ContainerRegistry/registries",
-        "conditions": [
-          {
-            "field": "properties.publicNetworkAccess",
-            "equals": "Enabled"
-          },
-          {
-            "field": "properties.networkRuleSet.defaultAction",
-            "equals": "Allow"
-          }
-        ]
-      },
-      "remediation": {
-        "steps": [
-          "Configure network rules to allow only specific IP ranges",
-          "Consider using private endpoints for internal access",
-          "Set default action to Deny",
-          "Test access from authorized networks"
-        ],
-        "example_fix": "az acr update --name <registry-name> --default-action Deny && az acr network-rule add --name <registry-name> --ip-address <allowed-ip-range>"
+        "example_fix": "az monitor log-analytics workspace update --resource-group <rg-name> --workspace-name <workspace-name> --retention-time 90"
       }
     }
   ],
   "manual_checks": [
-    "Governance forum establishment and periodic review meetings",
-    "Third-party risk assessment and concentration risk evaluation",
-    "Service Level Agreement negotiation and enforcement",
-    "Data sovereignty and cross-border transfer compliance",
-    "Change management process alignment between FI and CSP",
-    "Business continuity and disaster recovery plan validation",
-    "Security incident response coordination procedures",
-    "Privileged user access reviews and segregation of duties",
-    "Post-implementation reviews and control effectiveness testing",
-    "Exit planning and data deletion verification procedures",
-    "Multi-cloud strategy and concentration risk management",
-    "DevSecOps pipeline security controls validation",
-    "Penetration testing coordination with CSP",
-    "Capacity planning and performance testing",
-    "Vulnerability remediation SLA compliance tracking",
-    "Security awareness training for cloud operations staff"
+    "Multi-Factor Authentication enforcement for privileged accounts (Section 3.B.8)",
+    "Segregation of duties for user access administration (Section 3.B.8)",
+    "Regular user access reviews and recertification (Section 3.B.8)",
+    "Incident response plan testing and validation (Section 3.C.4)",
+    "Disaster recovery testing with CSP participation (Section 3.C.7)",
+    "Contractual agreements with CSP covering SLAs and change notification (Section 2.2)",
+    "CSP subcontractor due diligence and approval process (Section 2.2)",
+    "Cloud governance forum establishment and meeting frequency (Section 3.A.1)",
+    "Penetration testing coordination with CSP (Section 3.B.13)",
+    "Break-glass procedure documentation and review (Section 3.B.9)",
+    "Data classification policy for cloud assets (Section 2.2)",
+    "Exit planning and data deletion verification (Section 2.2)",
+    "Source code review process integration with CI/CD (Section 3.B.12)",
+    "Capacity planning and business volume forecasting (Section 3.C.5)",
+    "Problem management for recurring incidents (Section 3.C.4)"
   ]
 }
