@@ -1,0 +1,566 @@
+{
+  "category": "Custom Policy",
+  "subcategory": "Generated from ABS Cloud Computing Implementation Guide 3.0",
+  "version": "1.0.0",
+  "generated_at": "2025-12-08T06:49:09.818Z",
+  "source_document": "abs-cloud-computing-implementation-guide---july-2024.md",
+  "source_repo": "sectuary/CompliancePolicy",
+  "standards": [
+    {
+      "id": "CUSTOM-POLICY-101",
+      "title": "Storage Account Encryption Not Using Customer-Managed Keys",
+      "description": "Storage accounts should use customer-managed keys (CMK) for encryption to ensure FI controls cryptographic material and key lifecycle",
+      "severity": "HIGH",
+      "rationale": "Per ABS guidelines section on Cryptographic Key Management, FIs should generate and control their own unique cryptographic keys. Using CSP-managed keys reduces FI's control over data encryption.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.encryption.keySource",
+            "notEquals": "Microsoft.Keyvault"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create or identify Azure Key Vault with appropriate access policies",
+          "Generate encryption key in Key Vault using HSM backing (FIPS 140-2 Level 2 minimum)",
+          "Configure storage account to use customer-managed key",
+          "Implement key rotation policy and procedures"
+        ],
+        "example_fix": "az storage account update --name <storage-account> --resource-group <rg> --encryption-key-source Microsoft.Keyvault --encryption-key-vault <vault-uri> --encryption-key-name <key-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-102",
+      "title": "Storage Account Allows Public Network Access",
+      "description": "Storage accounts with sensitive data should disable public network access and use private endpoints only",
+      "severity": "CRITICAL",
+      "rationale": "ABS guidelines emphasize data confidentiality and network segregation. Public network access exposes storage accounts to internet-based attacks and unauthorized access.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.publicNetworkAccess",
+            "notEquals": "Disabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create private endpoint in secure VNet",
+          "Configure DNS for private endpoint resolution",
+          "Disable public network access on storage account",
+          "Verify connectivity through private endpoint only"
+        ],
+        "example_fix": "az storage account update --name <storage-account> --resource-group <rg> --public-network-access Disabled"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-103",
+      "title": "Key Vault Not Using HSM-Backed Keys",
+      "description": "Key Vaults storing cryptographic keys should use HSM-backed keys meeting FIPS 140-2 Level 2 minimum",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require cryptographic keys to be secured in FIPS 140-2 Level 2 validated HSMs at minimum to protect key material from compromise.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.sku.name",
+            "notEquals": "premium"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create new Key Vault with Premium SKU (HSM-backed)",
+          "Migrate keys to HSM-backed storage using secure key transfer",
+          "Update applications to reference new Key Vault",
+          "Delete old software-protected keys after migration"
+        ],
+        "example_fix": "az keyvault create --name <vault-name> --resource-group <rg> --sku premium --location <location>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-104",
+      "title": "Virtual Machine Disks Not Encrypted with Customer-Managed Keys",
+      "description": "VM disks should be encrypted using customer-managed keys stored in Key Vault for FI control over encryption",
+      "severity": "HIGH",
+      "rationale": "Per ABS encryption requirements, FIs should control cryptographic keys for sensitive data. Platform-managed encryption does not provide sufficient key control.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Compute/disks",
+        "conditions": [
+          {
+            "field": "properties.encryption.type",
+            "notEquals": "EncryptionAtRestWithCustomerKey"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create encryption key in Key Vault with HSM backing",
+          "Create disk encryption set referencing the key",
+          "Update disk to use customer-managed encryption",
+          "Verify encryption configuration"
+        ],
+        "example_fix": "az disk update --name <disk-name> --resource-group <rg> --encryption-type EncryptionAtRestWithCustomerKey --disk-encryption-set <des-id>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-105",
+      "title": "SQL Database TDE Not Using Customer-Managed Key",
+      "description": "SQL databases should use customer-managed keys for Transparent Data Encryption (TDE) to ensure FI control over encryption keys",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require FIs to generate and manage their own cryptographic keys. Service-managed TDE keys do not provide sufficient control for financial data.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.administrators.administratorType",
+            "exists": true
+          },
+          {
+            "field": "properties.keyId",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create encryption key in Key Vault",
+          "Grant SQL server identity access to Key Vault",
+          "Configure SQL server to use customer-managed TDE key",
+          "Verify all databases use customer-managed encryption"
+        ],
+        "example_fix": "az sql server key create --resource-group <rg> --server <server-name> --kid <key-vault-key-id> && az sql server tde-key set --resource-group <rg> --server <server-name> --server-key-type AzureKeyVault --kid <key-vault-key-id>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-106",
+      "title": "Network Security Group Allows Unrestricted Inbound SSH/RDP",
+      "description": "NSG rules should not allow unrestricted SSH (22) or RDP (3389) access from the internet",
+      "severity": "CRITICAL",
+      "rationale": "ABS guidelines require network access controls and IP source restrictions. Unrestricted administrative access exposes systems to brute force attacks and unauthorized access.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Network/networkSecurityGroups/securityRules",
+        "conditions": [
+          {
+            "field": "properties.access",
+            "equals": "Allow"
+          },
+          {
+            "field": "properties.direction",
+            "equals": "Inbound"
+          },
+          {
+            "field": "properties.sourceAddressPrefix",
+            "in": [
+              "*",
+              "Internet",
+              "0.0.0.0/0"
+            ]
+          },
+          {
+            "field": "properties.destinationPortRange",
+            "in": [
+              "22",
+              "3389",
+              "*"
+            ]
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Identify legitimate source IP ranges for administrative access",
+          "Update NSG rules to restrict source to specific IPs/ranges",
+          "Implement jump box/bastion host for administrative access",
+          "Enable just-in-time (JIT) VM access if using Azure Security Center"
+        ],
+        "example_fix": "az network nsg rule update --resource-group <rg> --nsg-name <nsg-name> --name <rule-name> --source-address-prefixes <allowed-ip-range>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-107",
+      "title": "Storage Account Not Configured for Immutable Blob Storage",
+      "description": "Storage accounts holding critical logs and backups should enable immutable storage to prevent tampering",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require securing logs and backups against unauthorized modification. Immutable storage prevents deletion or modification of critical audit data.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+        "conditions": [
+          {
+            "field": "properties.immutableStorageWithVersioning.enabled",
+            "notEquals": true
+          },
+          {
+            "field": "name",
+            "contains": "log"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable versioning on the storage account",
+          "Configure immutable storage policy on container",
+          "Set appropriate retention period based on regulatory requirements",
+          "Test restore procedures from immutable storage"
+        ],
+        "example_fix": "az storage container immutability-policy create --account-name <storage-account> --container-name <container> --period 365 --allow-protected-append-writes true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-108",
+      "title": "Key Vault Soft Delete Not Enabled",
+      "description": "Key Vaults should have soft delete enabled to prevent permanent deletion of keys and secrets",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines emphasize cryptographic key protection. Soft delete provides recovery capability for accidentally or maliciously deleted keys that could render data unrecoverable.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.enableSoftDelete",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable soft delete on Key Vault (cannot be disabled once enabled)",
+          "Configure retention period (90 days recommended)",
+          "Enable purge protection for critical vaults",
+          "Document key recovery procedures"
+        ],
+        "example_fix": "az keyvault update --name <vault-name> --enable-soft-delete true --enable-purge-protection true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-109",
+      "title": "Virtual Network Missing Network Security Groups",
+      "description": "Virtual network subnets should have network security groups attached for traffic filtering",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require network segregation and security controls. NSGs provide essential network-layer security for cloud workloads.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Network/virtualNetworks/subnets",
+        "conditions": [
+          {
+            "field": "properties.networkSecurityGroup.id",
+            "exists": false
+          },
+          {
+            "field": "name",
+            "notEquals": "GatewaySubnet"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create network security group with default-deny rules",
+          "Define required inbound and outbound traffic rules",
+          "Associate NSG with subnet",
+          "Enable NSG flow logs for monitoring"
+        ],
+        "example_fix": "az network vnet subnet update --resource-group <rg> --vnet-name <vnet-name> --name <subnet-name> --network-security-group <nsg-id>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-110",
+      "title": "Storage Account Not Using Private Endpoints",
+      "description": "Storage accounts should use private endpoints to restrict access to private networks only",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require network segregation between cloud and on-premise environments. Private endpoints ensure storage traffic remains on private networks.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.privateEndpointConnections",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create private endpoint in designated subnet",
+          "Configure private DNS zone for storage account",
+          "Disable public network access",
+          "Verify connectivity through private endpoint"
+        ],
+        "example_fix": "az network private-endpoint create --name <pe-name> --resource-group <rg> --vnet-name <vnet> --subnet <subnet> --private-connection-resource-id <storage-id> --group-id blob --connection-name <connection-name>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-111",
+      "title": "SQL Server Auditing Not Enabled",
+      "description": "SQL servers should have auditing enabled with logs sent to secure storage for security monitoring",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require security events monitoring and log retention. SQL auditing provides detailed activity logs for detecting unauthorized access and configuration changes.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.auditingSettings.state",
+            "notEquals": "Enabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create storage account for audit logs with appropriate retention",
+          "Enable server-level auditing",
+          "Configure audit log retention period (minimum 365 days)",
+          "Set up alerts for suspicious activities"
+        ],
+        "example_fix": "az sql server audit-policy update --resource-group <rg> --name <server-name> --state Enabled --storage-account <storage-account> --retention-days 365"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-112",
+      "title": "Virtual Machine Missing Azure Disk Encryption",
+      "description": "Virtual machines should have Azure Disk Encryption enabled for OS and data disks",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require encryption of sensitive data at rest. Unencrypted VM disks expose data to unauthorized access if disks are compromised or improperly disposed.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Compute/virtualMachines",
+        "conditions": [
+          {
+            "field": "properties.storageProfile.osDisk.encryptionSettings.enabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Ensure Key Vault is created with appropriate access policies",
+          "Create encryption key in Key Vault",
+          "Enable Azure Disk Encryption on VM",
+          "Verify encryption status"
+        ],
+        "example_fix": "az vm encryption enable --resource-group <rg> --name <vm-name> --disk-encryption-keyvault <vault-name> --volume-type ALL"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-113",
+      "title": "Container Registry Allows Anonymous Pull Access",
+      "description": "Container registries should require authentication for all pull operations to prevent unauthorized image access",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require access controls and authentication. Anonymous access to container images can expose proprietary code and vulnerabilities.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.ContainerRegistry/registries",
+        "conditions": [
+          {
+            "field": "properties.anonymousPullEnabled",
+            "equals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Disable anonymous pull access",
+          "Configure Azure AD authentication for registry access",
+          "Implement service principal or managed identity for CI/CD pipelines",
+          "Review and approve all access grants"
+        ],
+        "example_fix": "az acr update --name <registry-name> --resource-group <rg> --anonymous-pull-enabled false"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-114",
+      "title": "Key Vault Not Configured with Network Restrictions",
+      "description": "Key Vaults should be configured with virtual network rules or private endpoints to restrict network access",
+      "severity": "CRITICAL",
+      "rationale": "ABS guidelines require cryptographic key management to be secured on segregated networks. Unrestricted network access exposes keys to unauthorized access attempts.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.networkAcls.defaultAction",
+            "equals": "Allow"
+          },
+          {
+            "field": "properties.privateEndpointConnections",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Configure network ACLs to deny by default",
+          "Add approved virtual network subnets to allowed list",
+          "Or create private endpoint for Key Vault",
+          "Test application connectivity through approved networks"
+        ],
+        "example_fix": "az keyvault update --name <vault-name> --resource-group <rg> --default-action Deny"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-115",
+      "title": "SQL Database Not Using Advanced Threat Protection",
+      "description": "SQL databases should have Advanced Threat Protection enabled to detect suspicious activities",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require security events monitoring and incident detection. Advanced Threat Protection provides real-time detection of SQL injection, unusual access patterns, and other threats.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.securityAlertPolicies.state",
+            "notEquals": "Enabled"
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable Advanced Threat Protection on SQL server",
+          "Configure email notifications for security alerts",
+          "Integrate with SIEM for centralized monitoring",
+          "Define incident response procedures for SQL threats"
+        ],
+        "example_fix": "az sql server threat-policy update --resource-group <rg> --server <server-name> --state Enabled --email-account-admins Enabled"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-116",
+      "title": "Storage Account Not Requiring Secure Transfer",
+      "description": "Storage accounts should require secure transfer (HTTPS) for all operations to protect data in transit",
+      "severity": "CRITICAL",
+      "rationale": "ABS guidelines require encryption of sensitive data in transit. Allowing HTTP access exposes data to interception and man-in-the-middle attacks.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Storage/storageAccounts",
+        "conditions": [
+          {
+            "field": "properties.supportsHttpsTrafficOnly",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable secure transfer requirement on storage account",
+          "Update application connection strings to use HTTPS",
+          "Test connectivity to ensure no disruption",
+          "Monitor for any failed connection attempts using HTTP"
+        ],
+        "example_fix": "az storage account update --name <storage-account> --resource-group <rg> --https-only true"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-117",
+      "title": "Virtual Machine Scale Set Not Using Managed Identity",
+      "description": "Virtual machine scale sets should use managed identities instead of stored credentials for Azure resource access",
+      "severity": "MEDIUM",
+      "rationale": "ABS guidelines require secure credential management. Managed identities eliminate the need to store credentials in code or configuration, reducing credential exposure risk.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Compute/virtualMachineScaleSets",
+        "conditions": [
+          {
+            "field": "identity.type",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable system-assigned or user-assigned managed identity on VMSS",
+          "Grant identity required RBAC roles for resource access",
+          "Update application code to use managed identity for authentication",
+          "Remove stored credentials from configuration"
+        ],
+        "example_fix": "az vmss identity assign --name <vmss-name> --resource-group <rg>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-118",
+      "title": "Azure Monitor Diagnostic Settings Not Configured",
+      "description": "Resources should have diagnostic settings enabled to capture logs and metrics for security monitoring",
+      "severity": "HIGH",
+      "rationale": "ABS guidelines require centralized security events monitoring and log retention. Diagnostic settings enable log collection for incident detection and investigation.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.KeyVault/vaults",
+        "conditions": [
+          {
+            "field": "properties.diagnosticSettings",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Create Log Analytics workspace for centralized logging",
+          "Configure diagnostic settings for each critical resource",
+          "Enable relevant log categories and metrics",
+          "Set appropriate retention periods (minimum 365 days for audit logs)"
+        ],
+        "example_fix": "az monitor diagnostic-settings create --name <setting-name> --resource <resource-id> --workspace <workspace-id> --logs '[{\"category\": \"AuditEvent\", \"enabled\": true, \"retentionPolicy\": {\"enabled\": true, \"days\": 365}}]'"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-119",
+      "title": "SQL Server Not Using Azure AD Authentication",
+      "description": "SQL servers should use Azure AD authentication in addition to or instead of SQL authentication",
+      "severity": "MEDIUM",
+      "rationale": "ABS guidelines require multi-factor authentication for privileged access. Azure AD authentication enables MFA and centralized identity management for database access.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Sql/servers",
+        "conditions": [
+          {
+            "field": "properties.administrators.azureADOnlyAuthentication",
+            "notEquals": true
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Configure Azure AD admin for SQL server",
+          "Create Azure AD users and groups for database access",
+          "Enable Azure AD-only authentication if SQL auth not required",
+          "Update connection strings to use Azure AD authentication"
+        ],
+        "example_fix": "az sql server ad-admin create --resource-group <rg> --server-name <server-name> --display-name <admin-name> --object-id <aad-object-id>"
+      }
+    },
+    {
+      "id": "CUSTOM-POLICY-120",
+      "title": "App Service Not Using Managed Identity",
+      "description": "App Services should use managed identities for accessing other Azure resources instead of connection strings",
+      "severity": "MEDIUM",
+      "rationale": "ABS guidelines require secure credential management. Managed identities eliminate credential storage in application settings, reducing exposure risk.",
+      "detection_criteria": {
+        "resource_type": "Microsoft.Web/sites",
+        "conditions": [
+          {
+            "field": "identity.type",
+            "exists": false
+          }
+        ]
+      },
+      "remediation": {
+        "steps": [
+          "Enable system-assigned managed identity on App Service",
+          "Grant identity required permissions to target resources",
+          "Update application code to use DefaultAzureCredential or similar",
+          "Remove connection strings and access keys from configuration"
+        ],
+        "example_fix": "az webapp identity assign --name <app-name> --resource-group <rg>"
+      }
+    }
+  ],
+  "manual_checks": [
+    "Cloud governance structure and periodic review meetings with CSP",
+    "Concentration risk assessment across multiple CSPs",
+    "Contractual SLA agreements and liquidated damages clauses",
+    "CSP data deletion procedures verification through independent audit",
+    "Cross-border data transfer legal compliance review",
+    "Business continuity plan validation and joint DR testing with CSP",
+    "Privileged user access review procedures and maker/checker controls",
+    "Segregation of duties verification for cloud administrative roles",
+    "Change management approval workflows and emergency change procedures",
+    "Capacity planning reviews and performance testing schedules",
+    "Vulnerability remediation tracking and exception management",
+    "Container image approval process and immutability controls",
+    "DevOps/DevSecOps pipeline security review and approval gates",
+    "Key ceremony procedures for cryptographic key generation",
+    "Incident response plan testing and CERT/SIRT coordination",
+    "Third-party risk assessment of CSP subcontractors",
+    "Cost management and chargeback mechanisms review",
+    "Exit plan testing and data portability verification"
+  ]
+}
